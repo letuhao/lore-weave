@@ -42,8 +42,8 @@ func TestContention_IsRetried_ThenSucceeds(t *testing.T) {
 func TestContention_NeverCountsTowardTheBreaker(t *testing.T) {
 	brk := &countingBrk{}
 	for i := 0; i < 10; i++ { // twice the default threshold
-		_ = ratelimit.Guard(context.Background(), nil, brk, "cred", 0, provider.IsTransientUpstreamError,
-			func() error { return contention() })
+		_ = ratelimit.Guard(context.Background(), context.Background(), nil, brk, "cred", 0, provider.IsTransientUpstreamError,
+			func(ctx context.Context) error { return contention() })
 	}
 	if brk.failures != 0 {
 		t.Fatalf("contention recorded %d breaker failures — it would open the circuit on a busy GPU", brk.failures)
