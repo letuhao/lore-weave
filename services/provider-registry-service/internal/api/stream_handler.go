@@ -204,8 +204,6 @@ func (s *Server) doLlmStream(w http.ResponseWriter, r *http.Request, userID uuid
 		err = s.pool.QueryRow(r.Context(), `
 SELECT um.provider_kind, um.provider_model_name,
        COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), um.pricing,
-SELECT um.provider_kind, um.provider_model_name,
-       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), um.pricing,
        pc.provider_credential_id, pc.max_concurrency, pc.serve_one_model_at_a_time
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
@@ -412,7 +410,8 @@ WHERE platform_model_id=$1 AND status='active'
 	// Branch on operation — chat uses adapter.Stream, tts uses adapter.Speak.
 	switch op {
 	case "tts":
-		s.streamTts(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in.Input)
+		// #286 — a serve-one-model endpoint sequences TTS against other models too.
+		s.streamTts(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in.Input, serveOneModel)
 	default: // "chat"
 		streamErr := s.streamChat(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in, guard, serveOneModel)
 		if finalizeStream != nil {
@@ -583,6 +582,7 @@ func (s *Server) streamTts(
 	adapter provider.Adapter,
 	endpointBaseURL, secret, providerModelName string,
 	input map[string]any,
+	serveOneModel bool,
 ) {
 	// Decode input. text is required (already validated by doLlmStream);
 	// voice/speed/format have adapter-side defaults but we surface them
@@ -600,6 +600,17 @@ func (s *Server) streamTts(
 		Voice:  voice,
 		Speed:  speed,
 		Format: format,
+	}
+
+	// #286 — hold the endpoint's model lease for the duration of the Speak call
+	// when the credential opted in (mirrors streamChat).
+	if serveOneModel && s.modelLease != nil {
+		release, lerr := s.modelLease.Acquire(r.Context(), endpointBaseURL, providerModelName)
+		if lerr != nil {
+			slog.Warn("tts stream: model lease unavailable", "endpoint", endpointBaseURL, "err", lerr)
+			return
+		}
+		defer release()
 	}
 
 	emit := func(c provider.AudioChunk) error {

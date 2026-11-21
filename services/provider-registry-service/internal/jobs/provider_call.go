@@ -37,5 +37,9 @@ func (w *Worker) withScopedProviderCall(ctx context.Context, call func(context.C
 	if !ok {
 		return ratelimit.ErrGovernorUnavailable
 	}
-	return w.withProviderCall(ctx, scope.class, scope.limit, call)
+	// callProvider INSIDE the Guard: a model-lease request riding the ctx is
+	// acquired per attempt (a retry re-acquires), mirroring the chat path.
+	return w.withProviderCall(ctx, scope.class, scope.limit, func(c context.Context) error {
+		return w.callProvider(ctx, func() error { return call(c) })
+	})
 }

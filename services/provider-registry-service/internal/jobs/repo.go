@@ -906,7 +906,7 @@ func (r *Repo) ModelPricing(ctx context.Context, modelSource string, ownerUserID
 SELECT um.pricing, COALESCE(pc.endpoint_base_url,'')
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
-WHERE um.user_model_id=$1 AND um.owner_user_id=$2`,
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'`,
 			modelRef, ownerUserID).Scan(&raw, &endpointBaseURL)
 	case "platform_model":
 		err = r.pool.QueryRow(ctx,
@@ -989,7 +989,7 @@ func (r *Repo) ModelContextLength(ctx context.Context, modelSource string, owner
 	}
 	var ctxLen *int
 	err := r.pool.QueryRow(ctx,
-		`SELECT context_length FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
+		`SELECT context_length FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true`,
 		modelRef, ownerUserID).Scan(&ctxLen)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, false, nil

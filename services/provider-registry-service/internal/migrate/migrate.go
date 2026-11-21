@@ -52,12 +52,9 @@ CREATE INDEX IF NOT EXISTS idx_user_models_owner_flags ON user_models(owner_user
 
 -- v2: notes field for user annotations on models
 ALTER TABLE user_models ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
-ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
+-- 2026-11-21 audit: this ADD COLUMN IF NOT EXISTS had been pasted seven times
+-- (the same merge-artifact family as a doubled SELECT column list) — harmless,
+-- but this script replays on every startup.
 ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 -- v3: support custom providers + api_standard

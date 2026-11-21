@@ -64,6 +64,17 @@ func (w *Worker) processImageGenJob(
 	providerKind, providerModelName, endpointBaseURL, secret, err := w.resolve(ctx, ownerUserID, modelRef, modelSource)
 	if err != nil {
 		logger.Error("resolve creds failed (image)", "err", err)
+	// #286 — serve-one-model-at-a-time sequences MEDIA calls against other models on the
+	// same endpoint too (2026-11-21 audit — the lease was chat-only on the job path).
+	// Fail-open on a lookup error (today's behaviour).
+	if w.lease != nil {
+		if on, lerr := w.repo.ResolveServeOneModel(ctx, modelSource, ownerUserID, modelRef); lerr != nil {
+			logger.Warn("resolve serve_one_model_at_a_time failed — calling without the model lease", "err", lerr)
+		} else if on {
+			logger.Debug("model lease requested (media)", "endpoint", endpointBaseURL, "model", providerModelName)
+			ctx = withModelLeaseReq(ctx, endpointBaseURL, providerModelName)
+		}
+	}
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil,
 			"LLM_MODEL_NOT_FOUND", err.Error(), "")
 		return

@@ -168,7 +168,7 @@ func (l *ModelLease) Acquire(ctx context.Context, endpoint, model string) (func(
 			return func() {}, nil
 		}
 		if got == 1 {
-			slog.Info("model lease: granted", "endpoint", NormalizeEndpoint(endpoint), "model", model,
+			slog.Debug("model lease: granted", "endpoint", NormalizeEndpoint(endpoint), "model", model,
 				"waited_ms", time.Since(start).Milliseconds())
 			released := false
 			return func() {
@@ -186,7 +186,7 @@ func (l *ModelLease) Acquire(ctx context.Context, endpoint, model string) (func(
 		}
 		if !waited {
 			waited = true
-			slog.Info("model lease: waiting for another model to finish", "endpoint", NormalizeEndpoint(endpoint), "model", model)
+			slog.Debug("model lease: waiting for another model to finish", "endpoint", NormalizeEndpoint(endpoint), "model", model)
 		}
 		if time.Now().After(deadline) {
 			l.leave(keys, token)
