@@ -201,9 +201,12 @@ paths:
         - name: include_inactive
           in: query
           required: false
+          description: >-
+            Default false: only active models are listed. `true` opts in to
+            deactivated rows (for management surfaces that can re-activate them).
           schema:
             type: boolean
-            default: true
+            default: false
       responses:
         '200':
           description: OK
