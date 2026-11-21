@@ -10,7 +10,22 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/loreweave/provider-registry-service/internal/provider"
+	"github.com/loreweave/provider-registry-service/internal/ratelimit"
 )
+
+type retryTestGovernor struct{ acquired, released int }
+
+type retryTestPermit struct {
+	ctx context.Context
+	gov *retryTestGovernor
+}
+
+func (p *retryTestPermit) Context() context.Context { return p.ctx }
+func (p *retryTestPermit) Release()                 { p.gov.released++ }
+func (g *retryTestGovernor) Acquire(_ context.Context, callCtx context.Context, _ string, _ int) (ratelimit.ProviderPermit, error) {
+	g.acquired++
+	return &retryTestPermit{ctx: callCtx, gov: g}, nil
+}
 
 // stubRetrySleep swaps retrySleep for an instant version that still honors
 // ctx cancellation, so retry tests run fast without losing the cancel path.

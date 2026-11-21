@@ -28,9 +28,9 @@ const (
 
 // BreakerConfig — tunables (from service config).
 type BreakerConfig struct {
-	Threshold  int           // consecutive/windowed failures that trip the breaker
-	Window     time.Duration // failure-count decay window
-	Cooldown   time.Duration // open → half-open wait
+	Threshold int           // consecutive/windowed failures that trip the breaker
+	Window    time.Duration // failure-count decay window
+	Cooldown  time.Duration // open → half-open wait
 }
 
 // decideAllow — pure: given the current state and when it opened, decide whether
@@ -78,9 +78,9 @@ func NewBreaker(rdb *redis.Client, cfg BreakerConfig) *Breaker {
 	return &Breaker{rdb: rdb, cfg: cfg}
 }
 
-func stateKey(kind string) string     { return "breaker:" + kind + ":state" }
-func openedAtKey(kind string) string  { return "breaker:" + kind + ":opened_at" }
-func failuresKey(kind string) string  { return "breaker:" + kind + ":failures" }
+func stateKey(kind string) string    { return "breaker:" + kind + ":state" }
+func openedAtKey(kind string) string { return "breaker:" + kind + ":opened_at" }
+func failuresKey(kind string) string { return "breaker:" + kind + ":failures" }
 
 // Allow reports whether a call to `kind` may proceed. Persists an open→half_open
 // transition when the cooldown elapses so exactly the probe semantics hold.

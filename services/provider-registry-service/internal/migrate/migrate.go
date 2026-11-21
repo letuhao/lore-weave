@@ -52,12 +52,9 @@ CREATE INDEX IF NOT EXISTS idx_user_models_owner_flags ON user_models(owner_user
 
 -- v2: notes field for user annotations on models
 ALTER TABLE user_models ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
-ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
+-- 2026-11-21 audit: this ADD COLUMN IF NOT EXISTS had been pasted seven times
+-- (the same merge-artifact family as a doubled SELECT column list) — harmless,
+-- but this script replays on every startup.
 ALTER TABLE provider_inventory_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 -- v3: support custom providers + api_standard
@@ -83,6 +80,12 @@ ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS api_standard TEXT NOT 
 -- Replaces the old hardcoded per-kind cap (local→1, cloud→GOVERNOR_CLOUD_MAX): a
 -- provider's capacity is a property of THAT credential's backend, not its kind.
 ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS max_concurrency INT;
+
+-- #286 / plan 2026-09-19 T10: "serve one model at a time". A local server (LM Studio on one GPU)
+-- that can hold ONE model: two callers asking it for different models at once abort both loads.
+-- The user opts in per credential; the platform never assumes it (it is a property of the user's
+-- hardware, not of the provider kind), so the default is false and behaviour is unchanged.
+ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS serve_one_model_at_a_time BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS user_model_tags (
   user_model_tag_id UUID PRIMARY KEY DEFAULT uuidv7(),

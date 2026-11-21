@@ -176,8 +176,9 @@ type StreamChunk struct {
 	ResponseID string `json:"response_id,omitempty"`
 
 	// Error fields (Kind == StreamChunkError)
-	Code    string `json:"code,omitempty"`
-	Message string `json:"message,omitempty"`
+	Code        string   `json:"code,omitempty"`
+	Message     string   `json:"message,omitempty"`
+	RetryAfterS *float64 `json:"retry_after_s,omitempty"`
 
 	// Tool-call fields (Kind == StreamChunkToolCall). Index above carries
 	// the tool-call index. ID + ToolName appear on the FIRST fragment for

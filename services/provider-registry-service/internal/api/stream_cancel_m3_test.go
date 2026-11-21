@@ -62,7 +62,7 @@ func TestStreamRequest_DecodesStreamJobID(t *testing.T) {
 
 	// Absent → empty (today's behavior, no row created).
 	var in2 streamRequest
-	_ = json.NewDecoder(strings.NewReader(`{"model_source":"user_model","model_ref":"`+id+`"}`)).Decode(&in2)
+	_ = json.NewDecoder(strings.NewReader(`{"model_source":"user_model","model_ref":"` + id + `"}`)).Decode(&in2)
 	if in2.StreamJobID != "" {
 		t.Fatalf("stream_job_id should default empty, got %q", in2.StreamJobID)
 	}

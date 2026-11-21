@@ -155,7 +155,7 @@ func TestAffordableMaxTokens_ReservesQuantumHeadroom(t *testing.T) {
 	input := map[string]any{"messages": "hi"}
 	pricing := billing.Pricing{InputPerMTok: ptr(1.0), OutputPerMTok: ptr(10.0)}
 	res := billing.ReserveResult{
-		Insufficient: true,
+		Insufficient:   true,
 		DailyAvailable: 0.00001234, MonthlyAvailable: 9.0,
 	}
 	capped, _, ok := s.affordableMaxTokens(input, pricing, 1, res)

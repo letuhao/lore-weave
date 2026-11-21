@@ -11,7 +11,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -131,6 +133,47 @@ func TestDoLlmStream_OverBudget_402_BeforePrelude(t *testing.T) {
 	}
 	if stub.reconcileCalls != 0 {
 		t.Fatal("a rejected stream must not reconcile")
+	}
+}
+
+func TestDoLlmStream_AdmissionDenialBeforeReserveAndSSE(t *testing.T) {
+	stub := newBillingStub(t, reserveReply{http.StatusOK, map[string]any{"reservation_id": uuid.New()}})
+	srv, pool := guardrailServer(t, stub)
+	srv.providerGovernor = alwaysBusyGovernor{}
+	srv.providerDefaultMax = 8
+	srv.providerAcquireTimeout = time.Millisecond
+	userID, modelID := seedStreamModel(t, srv, pool, pricedTextModel)
+	streamJobID := uuid.New()
+	body, err := json.Marshal(map[string]any{
+		"operation": "chat", "model_source": "user_model", "model_ref": modelID.String(),
+		"messages":   []any{map[string]any{"role": "user", "content": "hello"}},
+		"max_tokens": 64, "stream_job_id": streamJobID.String(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/llm/stream", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.doLlmStream(w, req, userID)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d want 503 body=%s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("Retry-After") == "" {
+		t.Fatal("busy response missing Retry-After")
+	}
+	if w.Header().Get("Content-Type") == "text/event-stream" || strings.Contains(w.Body.String(), "event:") {
+		t.Fatalf("admission denial must precede SSE: headers=%v body=%q", w.Header(), w.Body.String())
+	}
+	if stub.reserveCalls != 0 || stub.reconcileCalls != 0 {
+		t.Fatalf("denied admission must not touch billing: reserve=%d reconcile=%d", stub.reserveCalls, stub.reconcileCalls)
+	}
+	if srv.jobCancels.cancel(streamJobID) {
+		t.Fatal("denied admission must not register stream cancellation")
+	}
+	if n := jobCount(t, pool, userID); n != 0 {
+		t.Fatalf("denied admission must not insert a stream-job row, got %d", n)
 	}
 }
 

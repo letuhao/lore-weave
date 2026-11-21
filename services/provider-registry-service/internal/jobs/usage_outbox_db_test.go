@@ -106,7 +106,7 @@ func TestFinalizeWithUsageOutbox_UsagePurposeOverridesOperationLabel(t *testing.
 	// args[6] (0-based) is the `operation` column (mcp_key_id added at index 3 shifted it) —
 	// assert the overridden label.
 	insertArgs := anyArgs(13)
-	insertArgs[6] ="glossary_extraction"
+	insertArgs[6] = "glossary_extraction"
 	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(insertArgs...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectCommit()

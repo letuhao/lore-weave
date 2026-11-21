@@ -310,9 +310,9 @@ type listModelsOut struct {
 	Note string `json:"note"`
 }
 
-//: What every settings_list_models result carries. Registry and live inventory are different sets —
-//: a model retired upstream still sits here — so an answer built from this list must not be
-//: presented as what a provider currently offers. D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY.
+// : What every settings_list_models result carries. Registry and live inventory are different sets —
+// : a model retired upstream still sits here — so an answer built from this list must not be
+// : presented as what a provider currently offers. D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY.
 type listModelsPage struct {
 	Returned int  `json:"returned"`
 	Total    int  `json:"total"`

@@ -40,6 +40,9 @@ import (
 )
 
 type Server struct {
+	// #286 — per-endpoint model lease (nil when REDIS_URL is unset). Used on the stream path;
+	// the jobs worker holds its own reference via WithModelLease.
+	modelLease *ratelimit.ModelLease
 	pool      *pgxpool.Pool
 	cfg       *config.Config
 	secret    []byte
@@ -72,6 +75,12 @@ type Server struct {
 	estimator billing.Estimator
 	guardrail *billing.GuardrailClient
 
+	// Shared provider concurrency guard for both queued jobs and direct
+	// /internal/* provider calls. Capped calls fail closed without Redis.
+	providerGovernor       ratelimit.ConcurrencyGovernor
+	providerDefaultMax     int
+	providerAcquireTimeout time.Duration
+
 	// Phase 0 (event-driven re-arch) — per-job cancellation. jobCancels maps an
 	// in-flight async job to its worker-goroutine CancelFunc so DELETE actually
 	// aborts the provider call + frees the governor slot (not just DB state).
@@ -100,13 +109,24 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 		copy(padded, key)
 		key = padded
 	}
+	providerDefaultMax := cfg.ProviderDefaultMaxConcurrency
+	if providerDefaultMax <= 0 {
+		providerDefaultMax = config.DefaultProviderMaxConcurrency
+	}
+	providerAcquireTimeout := cfg.ProviderAcquireTimeoutMs
+	if providerAcquireTimeout <= 0 {
+		providerAcquireTimeout = 30000
+	}
 	s := &Server{
-		pool:         pool,
-		cfg:          cfg,
-		secret:       []byte(cfg.JWTSecret),
-		secretKey:    key,
-		client:       &http.Client{Timeout: 15 * time.Second},
-		invokeClient: &http.Client{}, // no Timeout — context deadline from request controls cancellation
+		pool:                   pool,
+		cfg:                    cfg,
+		secret:                 []byte(cfg.JWTSecret),
+		secretKey:              key,
+		client:                 &http.Client{Timeout: 15 * time.Second},
+		invokeClient:           &http.Client{}, // no Timeout — context deadline from request controls cancellation
+		providerGovernor:       ratelimit.NewCompositeGovernor(nil, ratelimit.NewLocalGovernor()),
+		providerDefaultMax:     providerDefaultMax,
+		providerAcquireTimeout: time.Duration(providerAcquireTimeout) * time.Millisecond,
 	}
 	if raw := strings.TrimSpace(cfg.AdminJWTPublicKeyPEM); raw != "" {
 		if pub, err := adminjwt.ParseRSAPublicKeyPEM(pemOrBase64(raw)); err != nil {
@@ -139,9 +159,14 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 	if pool != nil {
 		s.jobsRepo = jobs.NewRepo(pool)
 		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), notifier, nil, audioCache, s.guardrail, cfg.JobMaxRetries)
-		// S3a (G5) — attach the per-provider governor + circuit-breaker when
-		// REDIS_URL is configured. Untyped-nil interfaces stay in place when it
-		// isn't, so Guard passes calls through (governance disabled).
+		s.jobsWorker.WithGovernance(s.providerGovernor, nil).WithDefaultConcurrency(providerDefaultMax).WithConcurrencyAcquireTimeout(time.Duration(providerAcquireTimeout) * time.Millisecond)
+
+		// S3a (G5) — provider concurrency. Without REDIS_URL a single-process
+		// deployment runs the local governor only (a real, enforced permit —
+		// not ungoverned). With Redis configured, acquire/renew go through the
+		// distributed lease; a Redis OUTAGE then fails capped calls closed
+		// (the agreed strict policy). An unparseable REDIS_URL is treated the
+		// same as an outage — misconfiguration must not silently ungovern.
 		if cfg.RedisURL != "" {
 			if opts, err := redis.ParseURL(cfg.RedisURL); err == nil {
 				rdb := redis.NewClient(opts)
@@ -154,8 +179,19 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 					Window:    time.Duration(cfg.BreakerWindowS) * time.Second,
 					Cooldown:  time.Duration(cfg.BreakerCooldownS) * time.Second,
 				})
-				s.jobsWorker.WithGovernance(gov, brk)
-				slog.Info("S3a governance enabled", "cloud_max", cfg.GovernorCloudMax, "breaker_threshold", cfg.BreakerThreshold)
+				localGov := ratelimit.NewLocalGovernor()
+				s.providerGovernor = ratelimit.NewCompositeGovernor(gov, localGov)
+				s.jobsWorker.WithGovernance(s.providerGovernor, brk).WithDefaultConcurrency(providerDefaultMax).WithConcurrencyAcquireTimeout(time.Duration(providerAcquireTimeout) * time.Millisecond)
+				slog.Info("provider governance enabled", "default_max_concurrency", providerDefaultMax, "breaker_threshold", cfg.BreakerThreshold)
+			// #286 — the model lease. Built whenever Redis is available; it only takes effect
+			// for credentials whose owner opted in to "serve one model at a time".
+			s.modelLease = ratelimit.NewModelLease(rdb, ratelimit.ModelLeaseConfig{
+				Lease:       time.Duration(cfg.ModelLeaseTTLS) * time.Second,
+				WaitTimeout: time.Duration(cfg.ModelLeaseWaitS) * time.Second,
+				AgingBound:  time.Duration(cfg.ModelLeaseAgingS) * time.Second,
+			})
+			s.jobsWorker.WithModelLease(s.modelLease)
+
 
 				// S4b (decision C) — start the usage outbox relay on the same
 				// Redis client. Drains usage_outbox → loreweave:events:usage (+
@@ -175,8 +211,14 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 				go relay.Run(context.Background())
 				slog.Info("S4b usage relay enabled", "usage_stream", cfg.UsageStream, "campaign_stream", cfg.CampaignUsageStream)
 			} else {
-				slog.Warn("S3a: REDIS_URL set but unparseable — governance disabled", "err", err)
+				s.providerGovernor = ratelimit.NewCompositeGovernor(nil, ratelimit.NewLocalGovernor())
+				s.jobsWorker.WithGovernance(s.providerGovernor, nil).WithDefaultConcurrency(providerDefaultMax).WithConcurrencyAcquireTimeout(time.Duration(providerAcquireTimeout) * time.Millisecond)
+				slog.Warn("S3a: REDIS_URL set but unparseable — capped provider calls will fail closed", "err", err)
 			}
+		} else {
+			s.providerGovernor = ratelimit.NewLocalGovernor()
+			s.jobsWorker.WithGovernance(s.providerGovernor, nil).WithDefaultConcurrency(providerDefaultMax).WithConcurrencyAcquireTimeout(time.Duration(providerAcquireTimeout) * time.Millisecond)
+			slog.Info("provider governance: REDIS_URL unset — process-local concurrency limits only")
 		}
 
 		// Phase 1 §5.6 — stuck-`running` truth-sweeper. Periodically bulk-fails
@@ -264,33 +306,28 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 				slog.Warn("LLM job queue: init failed — direct dispatch", "err", qerr)
 			} else {
 				s.jobQueue = jq
-				// resolve: job_id → (credential concurrency class, its cap). The
-				// cap is per-credential (NULL → unlimited); see ResolveConcurrency.
-				// FAIL-OPEN on a transient lookup error (run ungoverned) rather than
-				// fail-closed: returning ok=false makes handleDelivery ACK+DROP the
-				// message, stranding a pending job forever (the truth-sweeper only
-				// recovers stuck `running`, never `pending`). Only a genuinely-gone
-				// model (ok=false, no error) is dropped. Mirrors Process's fail-open.
-				resolve := func(ctx context.Context, jobID uuid.UUID) (string, int, bool) {
+				// Resolve a positive defaulted credential cap for queue admission. A
+				// transient lookup failure is returned so the delivery is requeued, not
+				// dropped or admitted without the strict distributed cap.
+				resolve := func(ctx context.Context, jobID uuid.UUID) (string, int, bool, error) {
 					d, lerr := s.jobsRepo.LoadForProcess(ctx, jobID)
+					if errors.Is(lerr, pgx.ErrNoRows) {
+						return "", 0, false, nil
+					}
 					if lerr != nil {
-						// Row truly gone → ErrNoRows; Process re-checks status anyway.
-						// Run ungoverned so a transient load blip can't strand the job.
-						return "ungoverned:" + jobID.String(), 0, true
+						return "", 0, false, lerr
 					}
-					key, limit, ok, rerr := s.jobsRepo.ResolveConcurrency(ctx, d.ModelSource, d.OwnerUserID, d.ModelRef)
-					if rerr != nil {
-						return "ungoverned:" + jobID.String(), 0, true // transient → fail open
+					key, limit, ok, err := s.jobsRepo.EffectiveConcurrency(ctx, d.ModelSource, d.OwnerUserID, d.ModelRef, providerDefaultMax)
+					if !ok && err == nil {
+						return "", 0, false, nil
 					}
-					if !ok {
-						return "", 0, false // model genuinely gone → drop
-					}
-					return key, limit, true
+					return key, limit, ok, err
+
 				}
-				// run: Phase-0 cancellable ctx + jobID→cancel registration, SYNC
-				// (the consumer acks only after the job is terminal). DELETE still
-				// aborts an in-flight queued job + frees its slot.
-				run := func(ctx context.Context, jobID uuid.UUID) {
+
+				// run: carry the admission lookup into provider attempts so worker
+				// dispatch uses the same credential class/cap without a second DB read.
+				run := func(ctx context.Context, jobID uuid.UUID, class string, limit int) error {
 					wctx := observability.DetachedContext(ctx)
 					var cancel context.CancelFunc
 					if s.jobWallclock > 0 {
@@ -301,8 +338,9 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 					s.jobCancels.register(jobID, cancel)
 					defer s.jobCancels.remove(jobID)
 					defer cancel()
-					s.jobsWorker.ProcessJob(wctx, jobID)
+					return s.jobsWorker.ProcessJobWithConcurrency(wctx, jobID, class, limit)
 				}
+
 				workers := cfg.GovernorCloudMax * 2
 				if workers < 4 {
 					workers = 4
@@ -1176,7 +1214,9 @@ func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request
 		EndpointBaseURL string `json:"endpoint_base_url"`
 		Active          *bool  `json:"active"`
 		APIStandard     string `json:"api_standard"`    // openai_compatible, anthropic, ollama, lm_studio
-		MaxConcurrency  *int   `json:"max_concurrency"` // nil/≤0 → unlimited (request-as-demand)
+		MaxConcurrency  *int   `json:"max_concurrency"` // nil/≤0 → system default
+		// #286: opt-in; absent → false. Only the user knows their server holds one model.
+		ServeOneModelAtATime *bool `json:"serve_one_model_at_a_time"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -1222,13 +1262,15 @@ func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request
 		CreatedAt            time.Time `json:"created_at"`
 		UpdatedAt            time.Time `json:"updated_at"`
 		MaxConcurrency       *int      `json:"max_concurrency"`
+		ServeOneModelAtATime bool      `json:"serve_one_model_at_a_time"`
 	}
+	oneModel := in.ServeOneModelAtATime != nil && *in.ServeOneModelAtATime
 	err = s.pool.QueryRow(r.Context(), `
-INSERT INTO provider_credentials(owner_user_id, provider_kind, display_name, endpoint_base_url, secret_ciphertext, secret_key_ref, status, api_standard, max_concurrency)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-RETURNING provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at, max_concurrency
-`, userID, in.ProviderKind, in.DisplayName, nullableString(in.EndpointBaseURL), encryptedSecret, keyRef, status, apiStandard, nullableConcurrency(in.MaxConcurrency)).
-		Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.MaxConcurrency)
+INSERT INTO provider_credentials(owner_user_id, provider_kind, display_name, endpoint_base_url, secret_ciphertext, secret_key_ref, status, api_standard, max_concurrency, serve_one_model_at_a_time)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+RETURNING provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at, max_concurrency, serve_one_model_at_a_time
+`, userID, in.ProviderKind, in.DisplayName, nullableString(in.EndpointBaseURL), encryptedSecret, keyRef, status, apiStandard, nullableConcurrency(in.MaxConcurrency), oneModel).
+		Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.MaxConcurrency, &out.ServeOneModelAtATime)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_PROVIDER_SAVE_FAILED", "failed to create provider credential")
 		return
@@ -1244,7 +1286,7 @@ func nullableString(v string) any {
 }
 
 // nullableConcurrency normalizes a max_concurrency input: nil or ≤0 → NULL
-// (unlimited; the DB column's "no cap" sentinel), a positive value → that cap.
+// (the system-default sentinel), a positive value → that explicit cap.
 func nullableConcurrency(v *int) any {
 	if v == nil || *v <= 0 {
 		return nil
@@ -1254,8 +1296,8 @@ func nullableConcurrency(v *int) any {
 
 // optionalInt distinguishes "field absent from the JSON body" (Present=false →
 // leave the column untouched on PATCH) from "field present, possibly null"
-// (Present=true, Value=nil → clear to unlimited). A plain *int can't tell these
-// apart — both decode to nil — which would make clearing-to-unlimited impossible.
+// (Present=true, Value=nil → restore the system default). A plain *int can't tell
+// these apart — both decode to nil — which would make clearing the override impossible.
 type optionalInt struct {
 	Present bool
 	Value   *int
@@ -1283,7 +1325,8 @@ func (s *Server) listProviderCredentials(w http.ResponseWriter, r *http.Request)
 	}
 	rows, err := s.pool.Query(r.Context(), `
 SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at,
-       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard, max_concurrency
+       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard, max_concurrency,
+       serve_one_model_at_a_time
 FROM provider_credentials
 WHERE owner_user_id=$1 AND status <> 'archived'
 ORDER BY created_at DESC
@@ -1304,11 +1347,12 @@ ORDER BY created_at DESC
 		HasSecret            bool      `json:"has_secret"`
 		APIStandard          string    `json:"api_standard"`
 		MaxConcurrency       *int      `json:"max_concurrency"`
+		ServeOneModelAtATime bool      `json:"serve_one_model_at_a_time"`
 	}
 	items := make([]row, 0)
 	for rows.Next() {
 		var item row
-		if err := rows.Scan(&item.ProviderCredentialID, &item.ProviderKind, &item.DisplayName, &item.EndpointBaseURL, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.HasSecret, &item.APIStandard, &item.MaxConcurrency); err != nil {
+		if err := rows.Scan(&item.ProviderCredentialID, &item.ProviderKind, &item.DisplayName, &item.EndpointBaseURL, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.HasSecret, &item.APIStandard, &item.MaxConcurrency, &item.ServeOneModelAtATime); err != nil {
 			writeError(w, http.StatusInternalServerError, "M03_PROVIDER_QUERY_FAILED", "failed to parse provider row")
 			return
 		}
@@ -1334,6 +1378,8 @@ func (s *Server) patchProviderCredential(w http.ResponseWriter, r *http.Request)
 		Active          *bool       `json:"active"`
 		APIStandard     *string     `json:"api_standard"`
 		MaxConcurrency  optionalInt `json:"max_concurrency"`
+		// #286: nil (absent) keeps the stored value; true/false sets it.
+		ServeOneModelAtATime *bool `json:"serve_one_model_at_a_time"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -1367,12 +1413,13 @@ SET
   secret_key_ref = COALESCE($6, secret_key_ref),
   status = COALESCE($7, status),
   api_standard = COALESCE($8, api_standard),
-  -- present-aware: $9 true → set $10 (nil clears to unlimited); false → keep
+  -- present-aware: $9 true → set $10 (nil restores default); false → keep
   max_concurrency = CASE WHEN $9::bool THEN $10 ELSE max_concurrency END,
+  serve_one_model_at_a_time = COALESCE($11, serve_one_model_at_a_time),
   updated_at = now()
 WHERE provider_credential_id = $1 AND owner_user_id = $2 AND status <> 'archived'
 `, id, userID, in.DisplayName, in.EndpointBaseURL, encryptedSecret, keyRef, statusPatch, in.APIStandard,
-		in.MaxConcurrency.Present, nullableConcurrency(in.MaxConcurrency.Value))
+		in.MaxConcurrency.Present, nullableConcurrency(in.MaxConcurrency.Value), in.ServeOneModelAtATime)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_PROVIDER_UPDATE_FAILED", "failed to update provider credential")
 		return
@@ -1396,13 +1443,15 @@ func (s *Server) getProviderCredentialByID(w http.ResponseWriter, r *http.Reques
 		HasSecret            bool      `json:"has_secret"`
 		APIStandard          string    `json:"api_standard"`
 		MaxConcurrency       *int      `json:"max_concurrency"`
+		ServeOneModelAtATime bool      `json:"serve_one_model_at_a_time"`
 	}
 	err := s.pool.QueryRow(r.Context(), `
 SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at,
-       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard, max_concurrency
+       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard, max_concurrency,
+       serve_one_model_at_a_time
 FROM provider_credentials
 WHERE provider_credential_id=$1 AND owner_user_id=$2
-`, id, userID).Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.HasSecret, &out.APIStandard, &out.MaxConcurrency)
+`, id, userID).Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.HasSecret, &out.APIStandard, &out.MaxConcurrency, &out.ServeOneModelAtATime)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "M03_PROVIDER_NOT_FOUND", "provider credential not found")
 		return
@@ -3607,6 +3656,9 @@ func (s *Server) internalEmbed(w http.ResponseWriter, r *http.Request) {
 	// invokeModel / internalInvokeModel reference was retired in
 	// Phase 4d alongside the handlers themselves).
 	var providerKind, providerModelName, endpointBaseURL, secret string
+	var credentialID uuid.UUID
+	var maxConcurrency *int
+	var concurrencyLimit int
 	var pricingBytes []byte // P2·B2(c) — model pricing JSONB, for the authoritative embed cost
 	if in.ModelSource == "user_model" {
 		var secretCipher string
@@ -3615,11 +3667,11 @@ func (s *Server) internalEmbed(w http.ResponseWriter, r *http.Request) {
 		// into a map[string]any.
 		var capFlagsBytes []byte
 		err = s.pool.QueryRow(r.Context(), `
-SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), COALESCE(um.capability_flags,'{}'::jsonb), COALESCE(um.pricing,'{}'::jsonb)
+SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), COALESCE(um.capability_flags,'{}'::jsonb), COALESCE(um.pricing,'{}'::jsonb), pc.provider_credential_id, pc.max_concurrency
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
-`, modelRef, userID).Scan(new(uuid.UUID), &providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &capFlagsBytes, &pricingBytes)
+`, modelRef, userID).Scan(new(uuid.UUID), &providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &capFlagsBytes, &pricingBytes, &credentialID, &maxConcurrency)
 		if err == pgx.ErrNoRows {
 			EmbedRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
 			writeError(w, http.StatusNotFound, "EMBED_MODEL_NOT_FOUND", "user model not found or inactive")
@@ -3629,6 +3681,12 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 			EmbedRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "EMBED_MODEL_QUERY_FAILED", "failed to resolve model")
 			return
+		}
+		if maxConcurrency != nil {
+			concurrencyLimit = *maxConcurrency
+		}
+		if concurrencyLimit <= 0 {
+			concurrencyLimit = s.providerDefaultMax
 		}
 		// K12.1 — reject a model whose capability_flags definitively classify it as a
 		// NON-embedding capability, before paying the provider round-trip. Fail-OPEN on an
@@ -3663,6 +3721,19 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		return
 	}
 
+	permitCallCtx, cancelCall := context.WithCancel(r.Context())
+	defer cancelCall()
+	permit, slotErr := s.acquireProviderSlot(r.Context(), permitCallCtx, credentialID.String(), concurrencyLimit)
+
+	if slotErr != nil {
+		EmbedRequestsTotal.WithLabelValues(OutcomeProviderError).Inc()
+		w.Header().Set("Retry-After", "1")
+		writeError(w, http.StatusServiceUnavailable, "EMBED_PROVIDER_BUSY", "provider is at its concurrency limit; retry later")
+		return
+	}
+	defer permit.Release()
+	r = r.WithContext(permit.Context())
+
 	// Resolve adapter for the provider kind
 	adapter, err := provider.ResolveAdapter(providerKind, s.invokeClient)
 	if err != nil {
@@ -3686,9 +3757,18 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		s.recordSyncUsage(r.Context(), userID, modelRef, "embed", "provider_error", 0, 0, nil,
 			map[string]any{"texts": in.Texts},
 			map[string]any{"error": errMsg})
-		// Map upstream 4xx (bad model, unsupported) to 400 so the caller
-		// can distinguish "wrong model" from "provider down."
-		if strings.Contains(errMsg, "provider error 4") || strings.Contains(errMsg, "does not support") {
+		var rateLimited *provider.ErrUpstreamRateLimited
+		if errors.As(err, &rateLimited) {
+			EmbedRequestsTotal.WithLabelValues(OutcomeProviderError).Inc()
+			if rateLimited.RetryAfterS != nil && *rateLimited.RetryAfterS > 0 {
+				delay := strconv.FormatFloat(*rateLimited.RetryAfterS, 'f', -1, 64)
+				w.Header().Set("Retry-After", delay)
+			}
+			writeError(w, http.StatusTooManyRequests, "EMBED_PROVIDER_RATE_LIMITED", errMsg)
+			return
+		}
+		var permanent *provider.ErrUpstreamPermanent
+		if errors.As(err, &permanent) || strings.Contains(errMsg, "does not support") {
 			EmbedRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 			writeError(w, http.StatusBadRequest, "EMBED_MODEL_INVALID", errMsg)
 			return

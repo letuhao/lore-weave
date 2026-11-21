@@ -248,13 +248,10 @@ FROM llm_jobs WHERE job_id = $1
 	return d, nil
 }
 
-// ResolveConcurrency resolves a job's concurrency CLASS — the key the governor +
-// queue serialize on — and that class's per-credential cap. The key is the
-// provider_credential_id (so all jobs sharing one BYOK credential share its
-// limit, regardless of provider kind). limit ≤ 0 means UNLIMITED (NULL
-// max_concurrency → request-as-demand; the backend infra is the only limiter).
-// found=false → model gone (caller acks+drops). Platform models have no
-// per-user credential → keyed by platform_model_id, always unlimited.
+// ResolveConcurrency returns the provider credential class and its explicit cap.
+// EffectiveConcurrency applies the configured fallback when this cap is NULL or
+// non-positive. Missing models return ok=false; database errors are returned so
+// callers can requeue without treating a transient read failure as unlimited.
 func (r *Repo) ResolveConcurrency(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (key string, limit int, ok bool, err error) {
 	var credID uuid.UUID
 	var maxConc *int
@@ -283,6 +280,25 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2`,
 		limit = *maxConc
 	}
 	return credID.String(), limit, true, nil
+}
+
+// ResolveServeOneModel reports whether the credential behind this model has opted in to
+// "serve one model at a time" (#286). Platform models never have: they are shared/cloud, and the
+// setting is a statement about the user's own local hardware.
+func (r *Repo) ResolveServeOneModel(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (bool, error) {
+	if modelSource != "user_model" {
+		return false, nil
+	}
+	var on bool
+	err := r.pool.QueryRow(ctx, `
+SELECT pc.serve_one_model_at_a_time
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2`, modelRef, ownerUserID).Scan(&on)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return on, err
 }
 
 // MarkRunning transitions a pending job to running and stamps started_at.
@@ -890,7 +906,7 @@ func (r *Repo) ModelPricing(ctx context.Context, modelSource string, ownerUserID
 SELECT um.pricing, COALESCE(pc.endpoint_base_url,'')
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
-WHERE um.user_model_id=$1 AND um.owner_user_id=$2`,
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'`,
 			modelRef, ownerUserID).Scan(&raw, &endpointBaseURL)
 	case "platform_model":
 		err = r.pool.QueryRow(ctx,
@@ -973,7 +989,7 @@ func (r *Repo) ModelContextLength(ctx context.Context, modelSource string, owner
 	}
 	var ctxLen *int
 	err := r.pool.QueryRow(ctx,
-		`SELECT context_length FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
+		`SELECT context_length FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true`,
 		modelRef, ownerUserID).Scan(&ctxLen)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, false, nil
