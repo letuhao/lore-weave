@@ -1821,7 +1821,10 @@ func (s *Server) listUserModels(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
 	}
-	includeInactive := r.URL.Query().Get("include_inactive") != "false"
+	// 2026-11-21: the default is ACTIVE-ONLY. The old shape (`!= "false"`) included
+	// deactivated models whenever the param was OMITTED — any caller that did not
+	// post-filter got dead rows silently. `include_inactive=true` opts in.
+	includeInactive := r.URL.Query().Get("include_inactive") == "true"
 	onlyFavorites := r.URL.Query().Get("only_favorites") == "true"
 	providerFilter := r.URL.Query().Get("provider_kind")
 	capabilityFilter := r.URL.Query().Get("capability")
