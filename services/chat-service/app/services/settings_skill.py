@@ -42,11 +42,11 @@ let alone returned** — don't tell the user you can check what their key IS, on
 whether one is set. Archived credentials are excluded.
 - `settings_list_models` — the user's registered models: alias, provider kind, \
 provider model name, context length, capability flags, tags, pricing, and the \
-`is_active`/`is_favorite` flags. **Defaults to returning BOTH active and \
-inactive models** — pass `active_only=true` if the user only wants to see what's \
-currently usable. `only_favorites` and `provider_kind` filter further. Results \
-come back in the user's own drag-drop UI order (`sort_order`) — no tool in this \
-domain can change that order.
+`is_active`/`is_favorite` flags. **By default only ACTIVE models are returned** — \
+pass `include_inactive=true` if the user asks about a model that seems missing or \
+wants one re-activated (`settings_model_set_active`). `only_favorites` and \
+`provider_kind` filter further. Results come back in the user's own drag-drop UI \
+order (`sort_order`) — no tool in this domain can change that order.
 - `settings_get_defaults` — the user's per-capability default model, as a \
 `{capability: user_model_id}` map. The capabilities that support a default are \
 `rerank`, `embedding`, `chat`, and `planner` — `planner` is its own key (the \
@@ -82,7 +82,7 @@ register a new one and delete the old.
 toggles, not the same concept. Favorite is a pure UI-pin flag with no other \
 effect. Active/inactive controls whether the model is offered in pickers — \
 setting `value=false` hides it without deleting it; it's still listed by \
-`settings_list_models` (recall: inactive models are included by default) and can \
+`settings_list_models` (recall: inactive models are hidden unless `include_inactive=true`) and can \
 be reactivated any time.
 - `settings_model_set_default(capability, user_model_id?)` sets — or, if you \
 omit/null `user_model_id`, CLEARS — the user's default model for exactly ONE \
