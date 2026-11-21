@@ -73,7 +73,7 @@ func (s *Server) mcpHandler() http.Handler {
 
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_list_models",
-		Description: "List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, user_model_id, provider kind, provider model name, context length, capabilities, tags and active/favorite flags — the fields you choose a model BY. Pass detail=full for pricing, notes, timestamps and the provider credential id. Returns a small page by default; `page.has_more` and `page.total` say what was withheld, and `limit` raises it. No secrets. 🔴 THIS IS NOT WHAT A PROVIDER CURRENTLY OFFERS. A model retired upstream still appears here, and one the provider newly offers does not appear until it is registered. If the user asks what their provider actually offers, or what they COULD register, answer with settings_provider_inventory instead — answering that question from this list is wrong in exactly the case it was asked to detect.",
+		Description: "List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, user_model_id, provider kind, provider model name, context length, capabilities, tags and active/favorite flags — the fields you choose a model BY. By default only ACTIVE models are listed — pass include_inactive=true to also see models that were deactivated (they are not deleted). Pass detail=full for pricing, notes, timestamps and the provider credential id. Returns a small page by default; `page.has_more` and `page.total` say what was withheld, and `limit` raises it. No secrets. 🔴 THIS IS NOT WHAT A PROVIDER CURRENTLY OFFERS. A model retired upstream still appears here, and one the provider newly offers does not appear until it is registered. If the user asks what their provider actually offers, or what they COULD register, answer with settings_provider_inventory instead — answering that question from this list is wrong in exactly the case it was asked to detect.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"models", "my models", "list models", "registered models", "llm"}),
 		// IN-3 — `detail` is a closed set, so it carries an enum the validator can see, not
 		// a set written only in prose. provider-registry infers every other schema from the
@@ -290,11 +290,15 @@ ORDER BY created_at DESC`, uid)
 // ── Tier R: models (NO secret) ─────────────────────────────────────────────────
 
 type listModelsIn struct {
-	OnlyFavorites bool   `json:"only_favorites,omitempty" jsonschema:"return only favorited models"`
-	ActiveOnly    bool   `json:"active_only,omitempty" jsonschema:"return only active models (default false — inactive models are included)"`
-	ProviderKind  string `json:"provider_kind,omitempty" jsonschema:"filter by provider kind (e.g. openai, anthropic)"`
-	Detail        string `json:"detail,omitempty" jsonschema:"how much of each model to return: summary (default — the fields you choose a model BY) or full (adds pricing, notes, timestamps, sort order and the provider credential id)"`
-	Limit         int    `json:"limit,omitempty" jsonschema:"maximum models to return (default 10, max 100). The reply says how many were withheld."`
+	OnlyFavorites bool `json:"only_favorites,omitempty" jsonschema:"return only favorited models"`
+	// 2026-11-21 model-surface audit: mirrors the HTTP twin's inverted default —
+	// only ACTIVE models are listed unless the caller opts in to the deactivated
+	// ones (e.g. to find a model that seems missing and re-activate it with
+	// settings_model_set_active).
+	IncludeInactive bool   `json:"include_inactive,omitempty" jsonschema:"include deactivated (inactive) models. Default false — only ACTIVE models are listed; pass true to find a model that seems missing (e.g. to re-activate it with settings_model_set_active)"`
+	ProviderKind    string `json:"provider_kind,omitempty" jsonschema:"filter by provider kind (e.g. openai, anthropic)"`
+	Detail          string `json:"detail,omitempty" jsonschema:"how much of each model to return: summary (default — the fields you choose a model BY) or full (adds pricing, notes, timestamps, sort order and the provider credential id)"`
+	Limit           int    `json:"limit,omitempty" jsonschema:"maximum models to return (default 20, max 100). The reply says how many were withheld."`
 }
 type listModelsOut struct {
 	Models []map[string]any `json:"models"`
@@ -415,9 +419,10 @@ func (s *Server) toolListModels(ctx context.Context, _ *mcp.CallToolRequest, in 
 	q := `SELECT user_model_id FROM user_models WHERE owner_user_id=$1`
 	args := []any{uid}
 	n := 2
-	// Default lists ALL models (active + inactive) — the friendly default for "show
-	// me my models". active_only is opt-in (zero value false → include inactive).
-	if in.ActiveOnly {
+	// 2026-11-21 model-surface audit: default lists only ACTIVE models — parity
+	// with the inverted HTTP twin (listUserModels). include_inactive=true opts in
+	// to the deactivated ones (re-activation flows via settings_model_set_active).
+	if !in.IncludeInactive {
 		q += fmt.Sprintf(" AND is_active=$%d", n)
 		args = append(args, true)
 		n++
