@@ -128,7 +128,13 @@ jobs:
           while IFS= read -r lock; do
             dir=$(dirname "$lock")
             echo "::group::npm audit $dir"
-            if ! ( cd "$dir" && npm audit --audit-level=high ); then
+            # Audit PRODUCTION deps only: every shipped artifact runs on a
+            # prod-only install (server Dockerfiles finish `npm install
+            # --omit=dev` / `npm prune --omit=dev`; frontends ship compiled
+            # bundles). Dev-dep findings (the @nestjs/cli -> webpack/glob
+            # chain, the vite/esbuild dev-server line) are a build-host
+            # concern, not a shipped surface.
+            if ! ( cd "$dir" && npm audit --omit=dev --audit-level=high ); then
               echo "::warning::npm audit findings in $dir"
               fail=1
             fi
