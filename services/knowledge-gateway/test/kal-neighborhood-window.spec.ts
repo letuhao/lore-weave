@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { HttpException } from '@nestjs/common';
 import { resetConfigForTest } from '../src/config/config.js';
 import { KalReadController } from '../src/kal/kal-read.controller.js';

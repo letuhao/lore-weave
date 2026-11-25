@@ -3,7 +3,7 @@
 // over fetch (the ToolsController precedent).
 
 import { Module } from '@nestjs/common';
-import { AssistantController } from './assistant.controller';
+import { AssistantController } from './assistant.controller.js';
 
 @Module({
   controllers: [AssistantController],

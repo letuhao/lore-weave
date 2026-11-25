@@ -15,7 +15,7 @@
  * IN-MEMORY store when REDIS_URL is unset, so the state machine ALWAYS works (single-instance
  * dev / tests); multi-replica deployments set REDIS_URL for a shared session surface.
  */
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 /** Sliding TTL for a session's activated set — bounds an idle session (24h). */
 export const ACTIVATION_TTL_SECONDS = 86_400;

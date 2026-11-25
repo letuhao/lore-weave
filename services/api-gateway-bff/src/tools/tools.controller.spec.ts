@@ -1,7 +1,13 @@
-import * as jwt from 'jsonwebtoken';
+import { jest } from '@jest/globals';
+import * as jwtModule from 'jsonwebtoken';
+// jest-ESM interop: the namespace of a CJS `export =` package comes back
+// empty (the lexer cannot see its names; node's own interop can — verified),
+// so fall back to the default binding, which is the real module.exports.
+const jwt = ((jwtModule as { default?: unknown }).default ?? jwtModule) as typeof import('jsonwebtoken');
+
 import { HttpException } from '@nestjs/common';
 
-import { ToolsController, FE_BRIDGE_TOOL_ALLOWLIST } from './tools.controller';
+import { ToolsController, FE_BRIDGE_TOOL_ALLOWLIST } from './tools.controller.js';
 
 const TEST_SECRET = 'fe-bridge-test-secret-32-characters!!';
 

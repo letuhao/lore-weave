@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 /**
  * L6.A.7 — WS server handshake tests (RAID cycle 28).
  *
@@ -10,19 +11,19 @@
 import type { IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
 
-import { performHandshake, WsV1Gateway, buildAuthzRequest, type ActiveConnection } from './ws-server';
-import { InMemoryAuthzProvider } from './per-message-authz';
-import { ENVELOPE_VERSION } from './session-router';
+import { performHandshake, WsV1Gateway, buildAuthzRequest, type ActiveConnection } from './ws-server.js';
+import { InMemoryAuthzProvider } from './per-message-authz.js';
+import { ENVELOPE_VERSION } from './session-router.js';
 import {
   hashFingerprint,
   hashOrigin,
   InMemoryTicketStore,
   makeTicket,
   type Ticket,
-} from './ticket-store';
-import { WsMetrics } from './metrics';
-import { loadWsServerConfig, WS_MAX_CONNECTIONS_PER_REPLICA } from './config';
-import { extractTicketId, ipToPrivacyPrefix, UpgradeError } from './upgrade-handler';
+} from './ticket-store.js';
+import { WsMetrics } from './metrics.js';
+import { loadWsServerConfig, WS_MAX_CONNECTIONS_PER_REPLICA } from './config.js';
+import { extractTicketId, ipToPrivacyPrefix, UpgradeError } from './upgrade-handler.js';
 
 const ORIGIN = 'https://app.loreweave.dev';
 const UA = 'Mozilla/5.0 LoreWeaveTest';
@@ -273,7 +274,7 @@ describe('WsV1Gateway.disconnectUser (L6.D)', () => {
 
   async function openConn(gw: WsV1Gateway, userIdHex: string, ip = '203.0.113.10'): Promise<TestSocket> {
     const ipPrefix = ipToPrivacyPrefix(ip);
-    const { makeTicket, hashOrigin, hashFingerprint } = await import('./ticket-store');
+    const { makeTicket, hashOrigin, hashFingerprint } = await import('./ticket-store.js');
     const ticket = makeTicket({
       userRefId: userIdHex,
       allowedRealities: ['00000000-0000-0000-0000-000000000def'],

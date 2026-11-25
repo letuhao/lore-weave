@@ -47,6 +47,19 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+import pytest  # noqa: E402
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import fe_runner as fr  # noqa: E402
@@ -63,6 +76,7 @@ def _carded(text, *tables):
             "store_diff": {t: {"before": {"rows": 1}, "after": {"rows": 2}} for t in tables}}
 
 
+@_SKIP_NO_CORPUS
 def test_the_ORIGINAL_instance_is_flagged():
     """🔴 THE FALSIFIER, on the row's own run: p4-ctxid rep4, read from the batch."""
     runs = json.loads(ORIGINAL.read_text(encoding="utf-8"))
@@ -72,6 +86,7 @@ def test_the_ORIGINAL_instance_is_flagged():
     assert "noted that Aldric Vane" in flagged[0]["text"]
 
 
+@_SKIP_NO_CORPUS
 def test_the_same_batch_does_not_flag_the_runs_that_WROTE():
     """PRECISION on the row's own batch: reps 1-3 say the same thing and it is TRUE — they
     wrote to kg_triage_items. Only rep4 promised something nothing recorded."""
@@ -148,6 +163,7 @@ def test_the_staged_phrase_clause_is_ISOLATED_and_excludes_nothing_measured():
     )
 
 
+@_SKIP_NO_CORPUS
 def test_a_turn_with_NO_card_is_not_this_bar():
     """The defect is a claim outliving a PENDING CARD. p4-ctxid rep0 says 'I've started the
     process ... I am currently adding them' with no card and no write — a false progress

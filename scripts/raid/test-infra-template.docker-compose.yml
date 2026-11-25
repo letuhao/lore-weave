@@ -34,16 +34,21 @@ services:
       retries: 15
 
   minio:
-    image: minio/minio:latest
+    # Bitnami legacy mirror — minio/minio left Docker Hub (see the main
+    # stack's minio service for the full story); pinned, run as root, and the
+    # command names the binary.
+    image: bitnamilegacy/minio:2024.8.3-debian-12-r1
+    user: root
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address ":9001"
+    command: minio server /data --console-address ":9001"
     ports:
       - "127.0.0.1:${RAID_MINIO_PORT}:9000"
       - "127.0.0.1:${RAID_MINIO_CONSOLE}:9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      # No curl in the bitnami image — bash /dev/tcp is a TCP-connect probe.
+      test: ["CMD", "bash", "-c", "</dev/tcp/localhost/9000"]
       interval: 3s
       timeout: 3s
       retries: 15

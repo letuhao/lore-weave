@@ -8,6 +8,9 @@ import {
   validateUiToolArgs,
   handleUiTool,
 } from '../src/mcp/ui-tools.js';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Phase 3 (P3.1) — the ai-gateway ui_* directive tools. Two guarantees under test:
 //  1) DRIFT: the committed mirror's args/required/enums equal the contract SoT

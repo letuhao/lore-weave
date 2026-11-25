@@ -17,7 +17,7 @@
  * their per-Type payloads.
  */
 
-import type { Direction, Kind, WsMetrics } from './metrics';
+import type { Direction, Kind, WsMetrics } from './metrics.js';
 
 /** Wire-compatible with `contracts/ws/envelope.go::Envelope`. */
 export interface Envelope {

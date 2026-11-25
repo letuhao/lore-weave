@@ -1,6 +1,6 @@
 module github.com/loreweave/foundation/tests/perf
 
-go 1.24.0
+go 1.26.0
 
 // S7 (perf harness). Standalone module — mirrors tests/workload-gen's pattern
 // (no published modules in the monorepo). gonum is already a vetted workspace
@@ -14,7 +14,7 @@ require (
 )
 
 require (
-	golang.org/x/tools v0.30.0 // indirect
+	golang.org/x/tools v0.49.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

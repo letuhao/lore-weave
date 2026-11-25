@@ -1,11 +1,16 @@
 import { Test } from '@nestjs/testing';
 import { firstValueFrom, take, toArray } from 'rxjs';
-import * as jwt from 'jsonwebtoken';
+import * as jwtModule from 'jsonwebtoken';
+// jest-ESM interop: the namespace of a CJS `export =` package comes back
+// empty (the lexer cannot see its names; node's own interop can — verified),
+// so fall back to the default binding, which is the real module.exports.
+const jwt = ((jwtModule as { default?: unknown }).default ?? jwtModule) as typeof import('jsonwebtoken');
+
 import type { Request } from 'express';
 import type { EventEmitter } from 'events';
 
-import { AmqpService } from '../ws/amqp.service';
-import { NotificationsController } from './notifications.controller';
+import { AmqpService } from '../ws/amqp.service.js';
+import { NotificationsController } from './notifications.controller.js';
 
 const TEST_SECRET = 'phase2e-test-secret-32-characters';
 

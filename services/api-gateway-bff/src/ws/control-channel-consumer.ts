@@ -17,8 +17,8 @@
  * crash the consumer. The Redis client itself handles connection
  * recovery (per the cycle 7 service-mode framework).
  */
-import type { Disconnector } from './disconnector';
-import type { WsMetrics } from './metrics';
+import type { Disconnector } from './disconnector.js';
+import type { WsMetrics } from './metrics.js';
 
 /** Wire schema mirrors `contracts/lifecycle/mode_propagation.go::ControlMessage`. */
 export interface RawControlMessage {

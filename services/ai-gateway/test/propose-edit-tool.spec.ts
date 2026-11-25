@@ -8,6 +8,9 @@ import {
   validateProposeEditArgs,
   handleProposeEdit,
 } from '../src/mcp/propose-edit-tool.js';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Phase 2 (P2.1) — the ai-gateway propose_edit tool. Same two guarantees as ui-tools:
 //  1) DRIFT: the mirror's operation enum + required equal the contract SoT.

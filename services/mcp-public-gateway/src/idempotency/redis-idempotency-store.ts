@@ -6,7 +6,7 @@
  * Config-gated: built only when REDIS_URL is set. Unset → null → idempotency runs
  * DISABLED (fail-open) — public write retries are not deduped (dev convenience).
  */
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 import type { IdempotencyStore } from './idempotency-store.js';
 

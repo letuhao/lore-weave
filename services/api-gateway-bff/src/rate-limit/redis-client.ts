@@ -20,9 +20,9 @@
  * An `'error'` listener swallows ioredis's background connection errors so they
  * can't bubble up as an unhandled exception that crashes the edge.
  */
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
-import type { RateLimitRedis } from './rate-limit';
+import type { RateLimitRedis } from './rate-limit.js';
 
 /** Bound on a single Redis command on the critical path (ms). Override with
  * EDGE_RATE_LIMIT_REDIS_TIMEOUT_MS; default 100ms — well above a healthy p99 (<5ms)

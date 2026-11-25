@@ -1,4 +1,9 @@
-import * as jwt from 'jsonwebtoken';
+import * as jwtModule from 'jsonwebtoken';
+// jest-ESM interop: the namespace of a CJS `export =` package comes back
+// empty (the lexer cannot see its names; node's own interop can — verified),
+// so fall back to the default binding, which is the real module.exports.
+const jwt = ((jwtModule as { default?: unknown }).default ?? jwtModule) as typeof import('jsonwebtoken');
+
 import {
   loadRateLimitConfig,
   isInternalToken,
@@ -12,7 +17,7 @@ import {
   RateLimitRedis,
   DEFAULT_EDGE_RATE_LIMIT_MAX,
   DEFAULT_EDGE_RATE_LIMIT_IP_MAX,
-} from './rate-limit';
+} from './rate-limit.js';
 
 const TOKEN = 'internal-secret-token';
 

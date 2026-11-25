@@ -7,7 +7,7 @@
  *   - Saturation ratio drives alerts (>80% cap)
  */
 
-import { WsMetrics } from './metrics';
+import { WsMetrics } from './metrics.js';
 
 describe('WsMetrics', () => {
   it('exposes the 6 canonical lw_ws_* surfaces', () => {
